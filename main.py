@@ -36,9 +36,11 @@ def is_rednote_link(url):
     return "xiaohongshu.com" in url or "xhslink.com" in url
 
 def get_real_url(short_url):
-    """ တိုတိုလေးပေးထားတဲ့ xhslink.com ကို မူရင်းလင့်ခ်အရှည်ကြီးဖြစ်အောင် ပြောင်းပေးခြင်း """
+    """ xhslink.com ကို မူရင်းလင့်ခ်အရှည်ကြီးဖြစ်အောင် ပြောင်းပေးခြင်း """
     headers = {
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh-Hans;q=0.9"
     }
     try:
         response = requests.get(short_url, headers=headers, allow_redirects=True, timeout=10)
@@ -48,13 +50,11 @@ def get_real_url(short_url):
         return short_url
 
 def extract_rednote_media(url):
-    # ၁။ လင့်ခ်အစစ်အမှန်ကို အရင်ပြောင်းယူမယ်
     real_url = get_real_url(url)
     
     # URL ထဲကနေ Note ID ကို ရှာဖွေမယ်
     note_id_match = re.search(r'/discovery/item/([a-f0-9]+)', real_url) or re.search(r'/android/([a-f0-9]+)', real_url)
     if not note_id_match:
-        # နောက်ထပ် ID ရှာဖွေနည်းလမ်းတစ်ခု
         note_id_match = re.search(r'item/([a-f0-9A-Za-z]+)', real_url)
         
     if not note_id_match:
@@ -63,74 +63,115 @@ def extract_rednote_media(url):
     note_id = note_id_match.group(1)
     logger.info(f"Extracting Note ID: {note_id}")
 
-    # Rednote ရဲ့ API လိပ်စာဆီ တိုက်ရိုက်ခေါ်ယူခြင်း
-    api_url = f"https://www.xiaohongshu.com/fe_api/burdock/v2/note/{note_id}"
+    # Rednote ရဲ့ Web Page ကို လှမ်းခေါ်တဲ့အခါ Block မခံရအောင် Cookie ပါ တွဲယူခြင်း
     headers = {
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
         "Referer": "https://www.xiaohongshu.com/",
-        "Accept": "application/json"
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh-Hans;q=0.9,en;q=0.8",
+        "Connection": "keep-alive"
     }
     
     try:
-        response = requests.get(api_url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            note_data = data.get("data", {})
-            if note_data:
-                note_type = note_data.get("type", "")
-                
-                # ၁။ ဗီဒီယို သီးသန့် ဖြစ်ခဲ့ရင်
-                if note_type == "video":
-                    video_url = note_data.get("video", {}).get("url", "")
-                    if video_url:
-                        return {"type": "video", "url": video_url}
-                
-                # ၂။ Live Photo သို့မဟုတ် ပုံများ ဖြစ်ခဲ့ရင်
-                images_list = note_data.get("images", [])
-                if images_list:
-                    img_urls = []
-                    for img in images_list:
-                        # Watermark မပါတဲ့ မူရင်းပုံလင့်ခ်ကို ရယူခြင်း
-                        img_url = img.get("url_raw") or img.get("url")
-                        if img_url:
-                            # http သို့မဟုတ် https ပါအောင် စစ်ဆေးခြင်း
-                            if img_url.startswith("//"):
-                                img_url = "https:" + img_url
-                            img_urls.append(img_url)
+        # Web Page HTML ကို အရင်ဆွဲယူမယ်
+        session = requests.Session()
+        # Cookie ရရှိအောင် ပင်မစာမျက်နှာကို အရင်တစ်ချက်ခေါ်တယ်
+        session.get("https://www.xiaohongshu.com/", headers=headers, timeout=5)
+        
+        # သက်ဆိုင်ရာ Post စာမျက်နှာကို ခေါ်ယူတယ်
+        response = session.get(real_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # HTML ထဲက window.__INITIAL_STATE__ သို့မဟုတ် window.__INITIAL_SSR_STATE__ ကို ရှာဖွေခြင်း
+        state_data = None
+        for script in soup.find_all("script"):
+            if script.string:
+                if "window.__INITIAL_STATE__" in script.string or "window.__INITIAL_SSR_STATE__" in script.string:
+                    state_data = script.string
+                    break
                     
-                    # Live Photo ဖြစ်ပါက (Live Video ဖိုင်ပါ ပါဝင်နေလျှင်)
-                    video_info = note_data.get("video", {})
-                    live_video_url = video_info.get("url", "") if video_info else ""
-                    if live_video_url:
-                        if live_video_url.startswith("//"):
-                            live_video_url = "https:" + live_video_url
-                        return {"type": "live_photo", "images": img_urls, "video": live_video_url}
+        if state_data:
+            # JSON ဒေတာကို ခွဲထုတ်ခြင်း
+            json_text = re.search(r'window\.__INITIAL_STATE__\s*=\s*(\{.*?\});', state_data) or \
+                        re.search(r'window\.__INITIAL_SSR_STATE__\s*=\s*(\{.*?\});', state_data) or \
+                        re.search(r'window\.__INITIAL_STATE__\s*=\s*(\{.*?\})', state_data)
                         
-                    return {"type": "images", "urls": img_urls}
-        
-        # API အဆင်မပြေရင် နောက်ထပ် API တစ်ခုနဲ့ ထပ်စမ်းမယ်
-        alternative_api = f"https://sns-api.xiaohongshu.com/api/sns/v1/note/feed"
-        # ဤနေရာတွင် Fallback HTML parsing ကို ဆက်လက်အသုံးပြုသည်
-        headers_html = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        res_html = requests.get(real_url, headers=headers_html, timeout=10)
-        soup = BeautifulSoup(res_html.text, 'html.parser')
-        
-        # HTML meta tags ကနေ ပြန်ရှာခြင်း
-        video_meta = soup.find("meta", property="og:video")
-        if video_meta and video_meta.get("content"):
-            return {"type": "video", "url": video_meta["content"]}
-            
+            if json_text:
+                data_json = json_text.group(1)
+                # သာမန် String အဖြစ် ပြောင်းလဲထားသော JSON ကို decode ပြန်လုပ်ခြင်း
+                data_json = data_json.replace("undefined", "null")
+                data = json.loads(data_json)
+                
+                # Note Detail Map ကို ရှာဖွေခြင်း
+                note_dict = data.get("note", {}).get("noteDetailMap", {}) or data.get("note", {}).get("note", {})
+                
+                # တိုက်ရိုက် note data မရလျှင် ID ဖြင့် ထပ်မံရှာဖွေခြင်း
+                note_data = {}
+                if note_id in note_dict:
+                    note_data = note_dict[note_id].get("note", {})
+                elif "note" in data:
+                    note_data = data.get("note", {})
+                else:
+                    # အဆင့်မြင့် JSON ရှာဖွေနည်းဖြင့် Note object ကို တိုက်ရိုက်ဆွဲထုတ်ခြင်း
+                    for key, val in note_dict.items():
+                        if isinstance(val, dict) and "note" in val:
+                            note_data = val.get("note", {})
+                            break
+                
+                if note_data:
+                    note_type = note_data.get("type", "")
+                    
+                    # ၁။ ဗီဒီယို သီးသန့် ဖြစ်ပါက
+                    if note_type == "video":
+                        video_info = note_data.get("video", {})
+                        media_list = video_info.get("media", {}).get("stream", {}).get("h264", [])
+                        if media_list:
+                            video_url = media_list[0].get("masterUrl")
+                            return {"type": "video", "url": video_url}
+                    
+                    # ၂။ Live Photo သို့မဟုတ် ပုံများ ဖြစ်ပါက
+                    image_list = note_data.get("imageList", [])
+                    if image_list:
+                        urls = []
+                        for img in image_list:
+                            # Watermark မရှိသော URL ကို ဦးစားပေးရွေးချယ်ခြင်း
+                            img_url = img.get("urlDefault") or img.get("url") or img.get("url_raw")
+                            if img_url:
+                                # // တည်းပါလာသော URL များကို https ဖြည့်ပေးခြင်း
+                                if img_url.startswith("//"):
+                                    img_url = "https:" + img_url
+                                # Rednote Logo မဟုတ်သော ပုံစစ်စစ်များကိုသာ ယူရန် (Logo URL တွင် logo သို့မဟုတ် logo_brand ပါတတ်သည်)
+                                if "logo" not in img_url.lower():
+                                    urls.append(img_url)
+                        
+                        # Live Photo ဖြစ်နေလျှင် (Live Video ပါဝင်ပါက)
+                        video_info = note_data.get("video", {})
+                        live_photo_video = None
+                        if video_info:
+                            media_list = video_info.get("media", {}).get("stream", {}).get("h264", []) or video_info.get("media", {}).get("stream", {}).get("h265", [])
+                            if media_list:
+                                live_photo_video = media_list[0].get("masterUrl")
+                                if live_photo_video and live_photo_video.startswith("//"):
+                                    live_photo_video = "https:" + live_photo_video
+                        
+                        if live_photo_video and urls:
+                            return {"type": "live_photo", "images": urls, "video": live_photo_video}
+                        
+                        if urls:
+                            return {"type": "images", "urls": urls}
+
+        # Fallback HTML Parse စနစ် (API fallback အဖြစ်သုံးသည်)
+        # Rednote Logo ပုံကို ရှောင်ရှားပြီး meta tag မှ ပုံစစ်စစ်ကို ယူခြင်း
         image_meta = soup.find("meta", property="og:image")
         if image_meta and image_meta.get("content"):
             img_url = image_meta["content"]
             if img_url.startswith("//"):
                 img_url = "https:" + img_url
-            return {"type": "images", "urls": [img_url]}
+            if "logo" not in img_url.lower() and "小红书" not in response.text:
+                return {"type": "images", "urls": [img_url]}
             
     except Exception as e:
-        logger.error(f"Extraction error details: {e}")
+        logger.error(f"Error extracting media: {e}")
     return None
 
 # --- (၄) Command Handlers ---
@@ -146,7 +187,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         return
 
-    # စာသားထဲကနေ လင့်ခ်ကို ရှာဖွေခြင်း
+    # စာထဲတွင် Rednote လင့်ခ် ပါမပါ စစ်ဆေးခြင်း
     urls = re.findall(r'(https?://[^\s]+)', text)
     rednote_url = None
     for url in urls:
@@ -155,26 +196,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             break
 
     if rednote_url:
-        waiting_msg = await update.message.reply_text("ခဏစောင့်ပေးပါ၊ မီဒီယာများကို ရှာဖွေဒေါင်းလုဒ်လုပ်နေပါတယ်...")
+        waiting_msg = await update.message.reply_text("ခဏစောင့်ပေးပါ၊ ပုံနှင့် ဗီဒီယိုများကို ရှာဖွေဆွဲထုတ်နေပါတယ်...")
         media = extract_rednote_media(rednote_url)
         
         if media:
             try:
-                # ၁။ ဗီဒီယို ဖြစ်လျှင်
+                # ၁။ ဗီဒီယို သီးသန့် ဖြစ်လျှင်
                 if media["type"] == "video":
                     await update.message.reply_video(video=media["url"], caption="Here is your video!")
                 
-                # ၂။ ပုံအများကြီး (Slide) သို့မဟုတ် ပုံတစ်ပုံတည်း ဖြစ်လျှင်
+                # ၂။ ပုံတစ်ပုံတည်း သို့မဟုတ် အများကြီး (Slide) ဖြစ်လျှင်
                 elif media["type"] == "images":
                     img_urls = media["urls"]
                     if len(img_urls) == 1:
                         await update.message.reply_photo(photo=img_urls[0], caption="Here is your image!")
                     else:
-                        # Telegram ကန့်သတ်ချက်အရ Album အလိုက် စုစည်းပို့ပေးခြင်း
+                        # ပုံအများကြီးကို Album အလိုက် စုပြီး ပို့ပေးခြင်း
                         media_group = [InputMediaPhoto(media=img_url) for img_url in img_urls[:10]]
                         await update.message.reply_media_group(media=media_group)
                 
-                # ၃။ Live Photo ဖြစ်လျှင် (ပုံရော၊ လှုပ်ရှားတဲ့ ဗီဒီယိုပါ တွဲပို့ပေးခြင်း)
+                # ၃။ Live Photo ဖြစ်လျှင် (ပုံရော ဗီဒီယိုပါ တွဲပို့ပေးခြင်း)
                 elif media["type"] == "live_photo":
                     img_urls = media["images"]
                     video_url = media["video"]
@@ -191,7 +232,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 await waiting_msg.delete()
             except Exception as e:
-                await waiting_msg.edit_text("မီဒီယာကို ဆွဲထုတ်ရရှိသော်လည်း Telegram ဆီ ပို့လွှတ်မှု အဆင်မပြေဖြစ်သွားပါတယ်။")
+                await waiting_msg.edit_text("မီဒီယာကို ဒေါင်းလို့ရပေမယ့် Telegram ဆီကို ပို့တဲ့နေရာမှာ error တက်သွားပါတယ်ခင်ဗျာ။")
                 logger.error(f"Sending error: {e}")
         else:
             await waiting_msg.edit_text("စိတ်မရှိပါနဲ့၊ မီဒီယာကို ဆွဲထုတ်လို့ မရပါဘူးခင်ဗျာ။ လင့်ခ်မှားနေတာ (သို့မဟုတ်) Post ဖျက်လိုက်တာ ဖြစ်နိုင်ပါတယ်။")
@@ -211,7 +252,7 @@ async def main():
     async with bot_app:
         await bot_app.initialize()
         await bot_app.start()
-        print("Bot is starting up successfully on Render...")
+        print("Bot is starting up successfully with Flask helper on Render...")
         await bot_app.updater.start_polling()
         
         while True:
