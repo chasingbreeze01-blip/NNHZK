@@ -58,8 +58,8 @@ def extract_rednote_media(url):
 # --- (၄) Command Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
-        "မင်္ဂလာပါ! NyiNyi + K 's OASIS လေးက ကြိုဆိုပါတယ်ဗျာ။\n\n"
-        "Rednote (Xiaohongshu) link ပို့ပေးရင် watermark မပါတဲ့ video ပြန်ဒေါင်းပေးပါမယ်။"
+        "မင်္ဂလာပါ ✌️ NyiNyi + K 's OASIS 🍀🌎 လေးက ကြိုဆိုပါတယ်ဗျာ💕 \n\n"
+        "Rednote link ပို့ပေးရင် watermark မပါတဲ့ video ပြန်ဒေါင်းပေးပါမယ်ဗျ🫶🏻 "
     )
     await update.message.reply_text(welcome_text)
 
@@ -69,7 +69,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if is_rednote_link(text):
-        waiting_msg = await update.message.reply_text("ခဏစောင့်ပေးပါ၊ မီဒီယာကို ရှာဖွေနေပါတယ်...")
+        waiting_msg = await update.message.reply_text("ခဏလေးစောင့်ပေးပါနော် ⏳ media ကိုရှာဖွေနေပါတယ်❤️...")
         media = extract_rednote_media(text)
         
         if media:
@@ -80,12 +80,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_photo(photo=media["url"], caption="Here is your image!")
                 await waiting_msg.delete()
             except Exception as e:
-                await waiting_msg.edit_text("မီဒီယာကို ပို့လို့မရဖြစ်နေပါတယ်။ လင့်ခ်မှားနေတာမျိုး ဖြစ်နိုင်ပါတယ်။")
+                await waiting_msg.edit_text("midea ကို ရှာမတွေ့ပါဘူးဗျ 🥺 link မှားနေတာဖြစ်နိုင်ပါတယ်။")
                 logger.error(f"Sending error: {e}")
         else:
-            await waiting_msg.edit_text("စိတ်မရှိပါနဲ့၊ မီဒီယာကို ဆွဲထုတ်လို့ မရပါဘူးခင်ဗျာ။")
+            await waiting_msg.edit_text("စိတ်မရှိပါနဲ့၊ မီဒီယာကို ဆွဲထုတ်လို့ မရပါဘူးခင်ဗျာ 🥺")
     else:
-        await update.message.reply_text("ကျေးဇူးပြုပြီး မှန်ကန်တဲ့ Rednote (Xiaohongshu) link တစ်ခုကို ပို့ပေးပါနော်။")
+        await update.message.reply_text("ကျေးဇူးပြုပြီး မှန်ကန်တဲ့ Rednote link တစ်ခုကို ပို့ပေးပါနော် 🫶🏻")
 
 # --- (၅) Main Async Runner ---
 async def main():
