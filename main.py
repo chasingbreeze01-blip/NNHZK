@@ -1,18 +1,33 @@
 import os
 import re
-import asyncio
-import logging
 import requests
 from flask import Flask, request
-from telegram import Update, InputMediaPhoto
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 TOKEN = '8754460428:AAFGxRB1B4-DuL-QXxgd4fWWh0okPiznGhM'
+TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
 
 app = Flask(__name__)
+
+def send_message(chat_id, text):
+    url = f"{TELEGRAM_API}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    requests.post(url, json=payload, timeout=10)
+
+def send_video(chat_id, video_url, caption="Here is your video!"):
+    url = f"{TELEGRAM_API}/sendVideo"
+    payload = {"chat_id": chat_id, "video": video_url, "caption": caption}
+    requests.post(url, json=payload, timeout=15)
+
+def send_photo(chat_id, photo_url, caption="Here is your image!"):
+    url = f"{TELEGRAM_API}/sendPhoto"
+    payload = {"chat_id": chat_id, "photo": photo_url, "caption": caption}
+    requests.post(url, json=payload, timeout=10)
+
+def send_media_group(chat_id, media_urls):
+    url = f"{TELEGRAM_API}/sendMediaGroup"
+    media = [{"type": "photo", "media": u} for u in media_urls[:10]]
+    payload = {"chat_id": chat_id, "media": media}
+    requests.post(url, json=payload, timeout=15)
 
 def is_rednote_link(url):
     return "xiaohongshu.com" in url or "xhslink.com" in url
@@ -34,56 +49,48 @@ def extract_via_cobalt(url):
             if urls:
                 return {"type": "images", "urls": urls}
     except Exception as e:
-        logger.error(f"Cobalt error: {e}")
+        print(f"Cobalt error: {e}")
     return None
-
-async def start(update: Update, context):
-    await update.message.reply_text("မင်္ဂလာပါ! Rednote လင့်ခ် ပို့ပေးရင် မီဒီယာ ဒေါင်းလုဒ်လုပ်ပေးပါမယ်ဗျာ။")
-
-async def handle_message(update: Update, context):
-    text = update.message.text
-    if not text:
-        return
-
-    urls = re.findall(r'(https?://[^\s]+)', text)
-    rednote_url = next((url for url in urls if is_rednote_link(url)), None)
-
-    if rednote_url:
-        waiting_msg = await update.message.reply_text("ခဏစောင့်ပေးပါ၊ မီဒီယာ ဒေါင်းလုဒ်လုပ်နေပါတယ်...")
-        try:
-            media = extract_via_cobalt(rednote_url)
-            if media:
-                if media["type"] == "video":
-                    await update.message.reply_video(video=media["url"], caption="Here is your video!")
-                elif media["type"] == "images":
-                    if len(media["urls"]) == 1:
-                        await update.message.reply_photo(photo=media["urls"][0], caption="Here is your image!")
-                    else:
-                        media_group = [InputMediaPhoto(media=u) for u in media["urls"][:10]]
-                        await update.message.reply_media_group(media=media_group)
-                await waiting_msg.delete()
-            else:
-                await waiting_msg.edit_text("ဒေတာရှာမတွေ့ပါဘူးဗျာ။")
-        except Exception as e:
-            logger.error(f"Handler error: {e}")
-            await waiting_msg.edit_text("မှားယွင်းမှု ဖြစ်ပေါ်သွားပါသည်။")
-    else:
-        await update.message.reply_text("ကျေးဇူးပြုပြီး Rednote လင့်ခ် ပို့ပေးပါ။")
-
-async def process_telegram_update(data):
-    application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    await application.initialize()
-    update = Update.de_json(data, application.bot)
-    await application.process_update(update)
 
 @app.route('/', methods=['POST', 'GET'])
 def webhook():
     if request.method == 'POST':
-        data = request.get_json(force=True, silent=True)
-        if data:
-            asyncio.run(process_telegram_update(data))
+        try:
+            data = request.get_json(force=True)
+            if not data or "message" not in data:
+                return 'OK', 200
+
+            message = data["message"]
+            chat_id = message["chat"]["id"]
+            text = message.get("text", "")
+
+            if text.startswith("/start"):
+                send_message(chat_id, "မင်္ဂလာပါ ✌️ NyiNyi + K 's OASIS 🍀🌎 လေးက ကြိုဆိုပါတယ်ဗျာ💕 \n\n"
+        "Rednote link ပို့ပေးရင် watermark မပါတဲ့ video ပြန်ဒေါင်းပေးပါမယ်ဗျ🫶🏻 ")
+                return 'OK', 200
+
+            urls = re.findall(r'(https?://[^\s]+)', text)
+            rednote_url = next((url for url in urls if is_rednote_link(url)), None)
+
+            if rednote_url:
+                send_message(chat_id, "ခဏလေးစောင့်ပေးပါနော် ⏳ media ကိုရှာဖွေနေပါတယ်❤️...")
+                media = extract_via_cobalt(rednote_url)
+                if media:
+                    if media["type"] == "video":
+                        send_video(chat_id, media["url"])
+                    elif media["type"] == "images":
+                        if len(media["urls"]) == 1:
+                            send_photo(chat_id, media["urls"][0])
+                        else:
+                            send_media_group(chat_id, media["urls"])
+                else:
+                    send_message(chat_id, "midea ကို ရှာမတွေ့ပါဘူးဗျ 🥺 link မှားနေတာဖြစ်နိုင်ပါတယ်။")
+            elif text:
+                send_message(chat_id, "ကျေးဇူးပြုပြီး မှန်ကန်တဲ့ Rednote link တစ်ခုကို ပို့ပေးပါနော် 🫶🏻")
+
+        except Exception as e:
+            print(f"Error handling webhook: {e}")
+            
         return 'OK', 200
+
     return 'Bot is active on Vercel!', 200
