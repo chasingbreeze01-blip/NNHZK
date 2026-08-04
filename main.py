@@ -1,115 +1,85 @@
 import os
+import re
 import logging
-import asyncio
 import requests
-from bs4 import BeautifulSoup
-from flask import Flask
-from threading import Thread
-from telegram import Update
+from telegram import Update, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Logging setup
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- (၁) Telegram Bot ရဲ့ Token ---
 TOKEN = '8754460428:AAFGxRB1B4-DuL-QXxgd4fWWh0okPiznGhM'
 
-# --- (၂) Flask Web Server ---
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Bot is alive and running!"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
-
-# --- (၃) Bot Function များ ---
 def is_rednote_link(url):
     return "xiaohongshu.com" in url or "xhslink.com" in url
 
-def extract_rednote_media(url):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
+def extract_via_cobalt(url):
     try:
-        response = requests.get(url, headers=headers, allow_redirects=True)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        api_url = "https://api.cobalt.tools/api/json"
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        payload = {"url": url, "filenamePattern": "basic"}
         
-        # ဗီဒီယိုလင့်ခ် ရှာဖွေခြင်း
-        video_meta = soup.find("meta", property="og:video")
-        if video_meta and video_meta.get("content"):
-            return {"type": "video", "url": video_meta["content"]}
-            
-        # ပုံလင့်ခ် ရှာဖွေခြင်း
-        image_meta = soup.find("meta", property="og:image")
-        if image_meta and image_meta.get("content"):
-            return {"type": "image", "url": image_meta["content"]}
-            
+        res = requests.post(api_url, json=payload, headers=headers, timeout=15)
+        data = res.json()
+        
+        if data.get("status") in ["stream", "redirect"]:
+            return {"type": "video", "url": data.get("url")}
+        elif data.get("status") == "picker":
+            picker_items = data.get("picker", [])
+            urls = [item.get("url") for item in picker_items if item.get("url")]
+            if urls:
+                return {"type": "images", "urls": urls}
     except Exception as e:
-        logger.error(f"Error extracting media: {e}")
+        logger.error(f"Cobalt error: {e}")
     return None
 
-# --- (၄) Command Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    welcome_text = (
-        "မင်္ဂလာပါ ✌️ NyiNyi + K 's OASIS 🍀🌎 လေးက ကြိုဆိုပါတယ်ဗျာ💕 \n\n"
-        "Rednote link ပို့ပေးရင် watermark မပါတဲ့ video ပြန်ဒေါင်းပေးပါမယ်ဗျ🫶🏻 "
-    )
-    await update.message.reply_text(welcome_text)
+    await update.message.reply_text("မင်္ဂလာပါ ✌️ NyiNyi + K 's OASIS 🍀🌎 လေးက ကြိုဆိုပါတယ်ဗျာ💕")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if not text:
         return
 
-    if is_rednote_link(text):
+    urls = re.findall(r'(https?://[^\s]+)', text)
+    rednote_url = next((url for url in urls if is_rednote_link(url)), None)
+
+    if rednote_url:
         waiting_msg = await update.message.reply_text("ခဏလေးစောင့်ပေးပါနော် ⏳ media ကိုရှာဖွေနေပါတယ်❤️...")
-        media = extract_rednote_media(text)
-        
-        if media:
-            try:
+        try:
+            media = extract_via_cobalt(rednote_url)
+            if media:
                 if media["type"] == "video":
                     await update.message.reply_video(video=media["url"], caption="Here is your video!")
-                elif media["type"] == "image":
-                    await update.message.reply_photo(photo=media["url"], caption="Here is your image!")
+                elif media["type"] == "images":
+                    if len(media["urls"]) == 1:
+                        await update.message.reply_photo(photo=media["urls"][0], caption="Here is your image!")
+                    else:
+                        media_group = [InputMediaPhoto(media=u) for u in media["urls"][:10]]
+                        await update.message.reply_media_group(media=media_group)
                 await waiting_msg.delete()
-            except Exception as e:
+            else:
                 await waiting_msg.edit_text("midea ကို ရှာမတွေ့ပါဘူးဗျ 🥺 link မှားနေတာဖြစ်နိုင်ပါတယ်။")
-                logger.error(f"Sending error: {e}")
-        else:
-            await waiting_msg.edit_text("စိတ်မရှိပါနဲ့၊ မီဒီယာကို ဆွဲထုတ်လို့ မရပါဘူးခင်ဗျာ 🥺")
+        except Exception as e:
+            logger.error(f"Handler error: {e}")
+            await waiting_msg.edit_text("စိတ်မရှိပါနဲ့၊ မီဒီယာကို ဆွဲထုတ်လို့ မရပါဘူးခင်ဗျာ 🥺 ")
     else:
         await update.message.reply_text("ကျေးဇူးပြုပြီး မှန်ကန်တဲ့ Rednote link တစ်ခုကို ပို့ပေးပါနော် 🫶🏻")
 
-# --- (၅) Main Async Runner ---
-async def main():
-    # Flask ကို Background thread မှာ တင်ထားမယ်
-    flask_thread = Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
+# Vercel Webhook Handler
+async def process_update(request_json):
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    await application.initialize()
+    update = Update.de_json(request_json, application.bot)
+    await application.process_update(update)
 
-    # Bot ကို တည်ဆောက်မယ်
-    bot_app = Application.builder().token(TOKEN).build()
-    bot_app.add_handler(CommandHandler("start", start))
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    # Bot ကို စနစ်တကျ Initialize လုပ်ပြီး Run မယ်
-    async with bot_app:
-        await bot_app.initialize()
-        await bot_app.start()
-        print("Bot is starting up successfully with Flask helper on Render...")
-        await bot_app.updater.start_polling()
-        
-        # Render ပိတ်မသွားအောင် loop အမြဲပတ်ထားမယ်
-        while True:
-            await asyncio.sleep(3600)
-
-if __name__ == '__main__':
-    # Asyncio loop ကို ပတ်မောင်းနှင်ခြင်း
-    asyncio.run(main())
+def handler(request):
+    import json
+    if request.method == "POST":
+        request_json = json.loads(request.body)
+        asyncio.run(process_update(request_json))
+        return "OK", 200
+    return "Bot is alive", 200
