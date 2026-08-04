@@ -1,14 +1,18 @@
 import os
 import re
+import asyncio
 import logging
 import requests
+from flask import Flask, request
 from telegram import Update, InputMediaPhoto
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TOKEN = '8754460428:AAFGxRB1B4-DuL-QXxgd4fWWh0okPiznGhM'
+
+app = Flask(__name__)
 
 def is_rednote_link(url):
     return "xiaohongshu.com" in url or "xhslink.com" in url
@@ -33,10 +37,10 @@ def extract_via_cobalt(url):
         logger.error(f"Cobalt error: {e}")
     return None
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("မင်္ဂလာပါ ✌️ NyiNyi + K 's OASIS 🍀🌎 လေးက ကြိုဆိုပါတယ်ဗျာ💕")
+async def start(update: Update, context):
+    await update.message.reply_text("မင်္ဂလာပါ! Rednote လင့်ခ် ပို့ပေးရင် မီဒီယာ ဒေါင်းလုဒ်လုပ်ပေးပါမယ်ဗျာ။")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update: Update, context):
     text = update.message.text
     if not text:
         return
@@ -45,7 +49,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rednote_url = next((url for url in urls if is_rednote_link(url)), None)
 
     if rednote_url:
-        waiting_msg = await update.message.reply_text("ခဏလေးစောင့်ပေးပါနော် ⏳ media ကိုရှာဖွေနေပါတယ်❤️...")
+        waiting_msg = await update.message.reply_text("ခဏစောင့်ပေးပါ၊ မီဒီယာ ဒေါင်းလုဒ်လုပ်နေပါတယ်...")
         try:
             media = extract_via_cobalt(rednote_url)
             if media:
@@ -59,27 +63,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await update.message.reply_media_group(media=media_group)
                 await waiting_msg.delete()
             else:
-                await waiting_msg.edit_text("midea ကို ရှာမတွေ့ပါဘူးဗျ 🥺 link မှားနေတာဖြစ်နိုင်ပါတယ်။")
+                await waiting_msg.edit_text("ဒေတာရှာမတွေ့ပါဘူးဗျာ။")
         except Exception as e:
             logger.error(f"Handler error: {e}")
-            await waiting_msg.edit_text("စိတ်မရှိပါနဲ့၊ မီဒီယာကို ဆွဲထုတ်လို့ မရပါဘူးခင်ဗျာ 🥺 ")
+            await waiting_msg.edit_text("မှားယွင်းမှု ဖြစ်ပေါ်သွားပါသည်။")
     else:
-        await update.message.reply_text("ကျေးဇူးပြုပြီး မှန်ကန်တဲ့ Rednote link တစ်ခုကို ပို့ပေးပါနော် 🫶🏻")
+        await update.message.reply_text("ကျေးဇူးပြုပြီး Rednote လင့်ခ် ပို့ပေးပါ။")
 
-# Vercel Webhook Handler
-async def process_update(request_json):
+async def process_telegram_update(data):
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     await application.initialize()
-    update = Update.de_json(request_json, application.bot)
+    update = Update.de_json(data, application.bot)
     await application.process_update(update)
 
-def handler(request):
-    import json
-    if request.method == "POST":
-        request_json = json.loads(request.body)
-        asyncio.run(process_update(request_json))
-        return "OK", 200
-    return "Bot is alive", 200
+@app.route('/', methods=['POST', 'GET'])
+def webhook():
+    if request.method == 'POST':
+        data = request.get_json(force=True, silent=True)
+        if data:
+            asyncio.run(process_telegram_update(data))
+        return 'OK', 200
+    return 'Bot is active on Vercel!', 200
