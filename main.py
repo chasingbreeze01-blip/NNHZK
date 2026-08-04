@@ -11,23 +11,35 @@ app = Flask(__name__)
 def send_message(chat_id, text):
     url = f"{TELEGRAM_API}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
-    requests.post(url, json=payload, timeout=10)
+    try:
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+        print(f"Error sending message: {e}")
 
 def send_video(chat_id, video_url, caption="Here is your video!"):
     url = f"{TELEGRAM_API}/sendVideo"
     payload = {"chat_id": chat_id, "video": video_url, "caption": caption}
-    requests.post(url, json=payload, timeout=15)
+    try:
+        requests.post(url, json=payload, timeout=15)
+    except Exception as e:
+        print(f"Error sending video: {e}")
 
 def send_photo(chat_id, photo_url, caption="Here is your image!"):
     url = f"{TELEGRAM_API}/sendPhoto"
     payload = {"chat_id": chat_id, "photo": photo_url, "caption": caption}
-    requests.post(url, json=payload, timeout=10)
+    try:
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+        print(f"Error sending photo: {e}")
 
 def send_media_group(chat_id, media_urls):
     url = f"{TELEGRAM_API}/sendMediaGroup"
     media = [{"type": "photo", "media": u} for u in media_urls[:10]]
     payload = {"chat_id": chat_id, "media": media}
-    requests.post(url, json=payload, timeout=15)
+    try:
+        requests.post(url, json=payload, timeout=15)
+    except Exception as e:
+        print(f"Error sending media group: {e}")
 
 def is_rednote_link(url):
     return "xiaohongshu.com" in url or "xhslink.com" in url
@@ -56,7 +68,7 @@ def extract_via_cobalt(url):
 def webhook():
     if request.method == 'POST':
         try:
-            data = request.get_json(force=True)
+            data = request.get_json(force=True, silent=True)
             if not data or "message" not in data:
                 return 'OK', 200
 
@@ -66,7 +78,7 @@ def webhook():
 
             if text.startswith("/start"):
                 send_message(chat_id, "မင်္ဂလာပါ ✌️ NyiNyi + K 's OASIS 🍀🌎 လေးက ကြိုဆိုပါတယ်ဗျာ💕 \n\n"
-        "Rednote link ပို့ပေးရင် watermark မပါတဲ့ video ပြန်ဒေါင်းပေးပါမယ်ဗျ🫶🏻 ")
+        "Rednote link ပို့ပေးရင် watermark မပါတဲ့ video ပြန်ဒေါင်းပေးပါမယ်ဗျ🫶🏻")
                 return 'OK', 200
 
             urls = re.findall(r'(https?://[^\s]+)', text)
