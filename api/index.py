@@ -18,7 +18,7 @@ def send_message(chat_id, text):
 
 def send_video(chat_id, video_url):
     url = f"{TELEGRAM_API}/sendVideo"
-    payload = {"chat_id": chat_id, "video": video_url, "caption": "Here is your video!"}
+    payload = {"chat_id": chat_id, "video": video_url, "caption": "Video ရပါပြီဗျ ✌️"}
     try:
         requests.post(url, json=payload, timeout=8)
     except Exception as e:
@@ -26,7 +26,7 @@ def send_video(chat_id, video_url):
 
 def send_photo(chat_id, photo_url):
     url = f"{TELEGRAM_API}/sendPhoto"
-    payload = {"chat_id": chat_id, "photo": photo_url, "caption": "Here is your image!"}
+    payload = {"chat_id": chat_id, "photo": photo_url, "caption": "Image ရပါပြီခင်ဗျ ✌️"}
     try:
         requests.post(url, json=payload, timeout=5)
     except Exception as e:
@@ -76,14 +76,15 @@ def webhook(path):
                 text = message.get("text", "")
 
                 if text.startswith("/start"):
-                    send_message(chat_id, "မင်္ဂလာပါ! Rednote လင့်ခ် ပို့ပေးရင် မီဒီယာ ဒေါင်းလုဒ်လုပ်ပေးပါမယ်ဗျာ။")
+                    send_message(chat_id, "မင်္ဂလာပါ ✌️ NyiNyi + K 's OASIS 🍀🌎 လေးက ကြိုဆိုပါတယ်ဗျာ💕 \n\n"
+        "Rednote link ပို့ပေးရင် watermark မပါတဲ့ video ပြန်ဒေါင်းပေးပါမယ်ဗျ🫶🏻")
                     return 'OK', 200
 
                 urls = re.findall(r'(https?://[^\s]+)', text)
                 rednote_url = next((url for url in urls if is_rednote_link(url)), None)
 
                 if rednote_url:
-                    send_message(chat_id, "ခဏစောင့်ပေးပါ၊ မီဒီယာ ဒေါင်းလုဒ်လုပ်နေပါတယ်...")
+                    send_message(chat_id, "ခဏလေးစောင့်ပေးပါနော် ⏳ media ကိုရှာဖွေနေပါတယ်❤️...")
                     media = extract_via_cobalt(rednote_url)
                     if media:
                         if media["type"] == "video":
@@ -94,9 +95,9 @@ def webhook(path):
                             else:
                                 send_media_group(chat_id, media["urls"])
                     else:
-                        send_message(chat_id, "ဒေတာရှာမတွေ့ပါဘူးဗျာ။")
+                        send_message(chat_id, "Data ကို ရှာမတွေ့ပါဘူးဗျ 🥺 link မှားနေတာဖြစ်နိုင်ပါတယ်။")
                 elif text:
-                    send_message(chat_id, "ကျေးဇူးပြုပြီး Rednote လင့်ခ် ပို့ပေးပါ။")
+                    send_message(chat_id, "ကျေးဇူးပြုပြီး မှန်ကန်တဲ့ Rednote link တစ်ခုကို ပို့ပေးပါနော် 🫶🏻")
         except Exception as e:
             print(f"Error: {e}")
         return 'OK', 200
