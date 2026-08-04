@@ -9,9 +9,20 @@ TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
 
 app = Flask(__name__)
 
+# Keyboard Button ပါဝင်သော send_message function
 def send_message(chat_id, text):
     url = f"{TELEGRAM_API}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
+    payload = {
+        "chat_id": chat_id, 
+        "text": text,
+        "reply_markup": {
+            "keyboard": [
+                [{"text": "🚀 Start"}]
+            ],
+            "resize_keyboard": True,
+            "is_persistent": True
+        }
+    }
     try:
         requests.post(url, json=payload, timeout=5)
     except Exception as e:
@@ -36,7 +47,6 @@ def send_photo(chat_id, photo_url):
 def is_rednote_link(url):
     return "xiaohongshu.com" in url or "xhslink.com" in url
 
-# မူရင်း Beautiful Soup / Downloader Logic (Spelling Error ပြင်ပြီး)
 def extract_rednote_media(url):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -45,12 +55,10 @@ def extract_rednote_media(url):
         response = requests.get(url, headers=headers, allow_redirects=True, timeout=8)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # ဗီဒီယိုလင့်ခ် ရှာဖွေခြင်း
         video_meta = soup.find("meta", property="og:video")
         if video_meta and video_meta.get("content"):
             return {"type": "video", "url": video_meta["content"]}
             
-        # ပုံလင့်ခ် ရှာဖွေခြင်း
         image_meta = soup.find("meta", property="og:image")
         if image_meta and image_meta.get("content"):
             return {"type": "image", "url": image_meta["content"]}
@@ -70,7 +78,8 @@ def webhook(path):
                 chat_id = message["chat"]["id"]
                 text = message.get("text", "")
 
-                if text.startswith("/start"):
+                # /start သို့မဟုတ် 🚀 Start ခလုတ်ကို နှိပ်လျှင်
+                if text.startswith("/start") or text == "🚀 Start":
                     welcome_text = (
                         "မင်္ဂလာပါ ✌️ NyiNyi + K 's OASIS 🍀🌎 လေးက ကြိုဆိုပါတယ်ဗျာ💕 \n\n"
                         "Rednote link ပို့ပေးရင် watermark မပါတဲ့ video ပြန်ဒေါင်းပေးပါမယ်ဗျ🫶🏻"
