@@ -52,30 +52,48 @@ def send_media_group(chat_id, media_urls):
 def is_rednote_link(url):
     return "xiaohongshu.com" in url or "xhslink.com" in url
 
-def extract_rednote_media(url):
+# Short Link (xhslink.com) များကို Real URL သို့ ပြောင်းပေးသည့် Function
+def get_real_url(url):
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     try:
-        # Fast API Service for Rednote / Xiaohongshu
+        res = requests.head(url, headers=headers, allow_redirects=True, timeout=5)
+        return res.url
+    except Exception:
+        return url
+
+def extract_rednote_media(url):
+    real_url = get_real_url(url)
+    
+    # Method 1: TikWM Rednote API
+    try:
+        api_url = f"https://api.v2.tikwm.com/api/rednote?url={real_url}"
+        res = requests.get(api_url, timeout=6).json()
+        if res.get("code") == 0 and "data" in res:
+            data = res["data"]
+            if data.get("images"):
+                return {"type": "images", "urls": data["images"]}
+            elif data.get("play"):
+                return {"type": "video", "url": data["play"]}
+    except Exception as e:
+        print(f"API 1 Error: {e}")
+
+    # Method 2: Cobalt API
+    try:
         cobalt_url = "https://api.cobalt.tools/api/json"
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json"
-        }
-        payload = {"url": url}
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        payload = {"url": real_url}
+        res = requests.post(cobalt_url, json=payload, headers=headers, timeout=6).json()
         
-        res = requests.post(cobalt_url, json=payload, headers=headers, timeout=5)
-        data = res.json()
-        
-        status = data.get("status")
+        status = res.get("status")
         if status in ["stream", "redirect"]:
-            return {"type": "video", "url": data.get("url")}
+            return {"type": "video", "url": res.get("url")}
         elif status == "picker":
-            picker = data.get("picker", [])
-            urls = [item.get("url") for item in picker if item.get("url")]
+            urls = [item.get("url") for item in res.get("picker", []) if item.get("url")]
             if urls:
                 return {"type": "images", "urls": urls}
     except Exception as e:
-        print(f"Cobalt error: {e}")
-        
+        print(f"API 2 Error: {e}")
+
     return None
 
 @app.route('/', defaults={'path': ''}, methods=['POST', 'GET'])
