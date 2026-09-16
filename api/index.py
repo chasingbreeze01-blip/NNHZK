@@ -9,6 +9,7 @@ TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
 
 app = Flask(__name__)
 
+# Persistent Keyboard ပါဝင်သော send_message function
 def send_message(chat_id, text):
     url = f"{TELEGRAM_API}/sendMessage"
     payload = {
@@ -29,7 +30,7 @@ def send_video(chat_id, video_url):
     url = f"{TELEGRAM_API}/sendVideo"
     payload = {"chat_id": chat_id, "video": video_url, "caption": "Here is your video!"}
     try:
-        requests.post(url, json=payload, timeout=10)
+        requests.post(url, json=payload, timeout=12)
     except Exception as e:
         print(f"Error: {e}")
 
@@ -44,22 +45,24 @@ def send_photo(chat_id, photo_url):
 def is_rednote_link(url):
     return "xiaohongshu.com" in url or "xhslink.com" in url
 
-# အရင် မူရင်း BeautifulSoup Logic အတိအကျ
+# BeautifulSoup မူရင်း Logic (Session + Desktop User-Agent ပြင်ဆင်ချက်ပါဝင်သည်)
 def extract_rednote_media(url):
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
     }
     try:
-        response = requests.get(url, headers=headers, allow_redirects=True, timeout=8)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        session = requests.Session()
+        res = session.get(url, headers=headers, allow_redirects=True, timeout=8)
+        soup = BeautifulSoup(res.text, 'html.parser')
         
-        # ဗီဒီယိုလင့်ခ် ရှာဖွေခြင်း
-        video_meta = soup.find("meta", property="og:video")
+        # Video Meta Search
+        video_meta = soup.find("meta", property="og:video") or soup.find("meta", attrs={"name": "og:video"})
         if video_meta and video_meta.get("content"):
             return {"type": "video", "url": video_meta["content"]}
             
-        # ပုံလင့်ခ် ရှာဖွေခြင်း
-        image_meta = soup.find("meta", property="og:image")
+        # Image Meta Search
+        image_meta = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "og:image"})
         if image_meta and image_meta.get("content"):
             return {"type": "image", "url": image_meta["content"]}
             
@@ -78,6 +81,7 @@ def webhook(path):
                 chat_id = message["chat"]["id"]
                 text = message.get("text", "")
 
+                # /start သို့မဟုတ် 🚀 Start ခလုတ်ကို နှိပ်လျှင်
                 if text.startswith("/start") or text == "🚀 Start":
                     welcome_text = (
                         "မင်္ဂလာပါ ✌️ NyiNyi + K 's OASIS 🍀🌎 လေးက ကြိုဆိုပါတယ်ဗျာ💕 \n\n"
@@ -98,7 +102,7 @@ def webhook(path):
                         elif media["type"] == "image":
                             send_photo(chat_id, media["url"])
                     else:
-                        send_message(chat_id, "Data ကို ရှာမတွေ့ပါဘူးဗျ 🥺 link မှားနေတာဖြစ်နိုင်ပါတယ်။")
+                        send_message(chat_id, "Data ကို ရှာမတွေ့ပါဘူးဗျ 🥲 link မှားနေတာဖြစ်နိုင်ပါတယ်။")
                 elif text:
                     send_message(chat_id, "ကျေးဇူးပြုပြီး မှန်ကန်တဲ့ Rednote link တစ်ခုကို ပို့ပေးပါနော် 🫶🏻")
         except Exception as e:
