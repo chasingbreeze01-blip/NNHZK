@@ -29,7 +29,7 @@ def send_video(chat_id, video_url):
     url = f"{TELEGRAM_API}/sendVideo"
     payload = {"chat_id": chat_id, "video": video_url, "caption": "Here is your video!"}
     try:
-        requests.post(url, json=payload, timeout=8)
+        requests.post(url, json=payload, timeout=10)
     except Exception as e:
         print(f"Error: {e}")
 
@@ -44,38 +44,27 @@ def send_photo(chat_id, photo_url):
 def is_rednote_link(url):
     return "xiaohongshu.com" in url or "xhslink.com" in url
 
-# BeautifulSoup မူရင်း Downloader Logic (Short Link Fix ပါဝင်သည်)
+# အရင် မူရင်း BeautifulSoup Logic အတိအကျ
 def extract_rednote_media(url):
     headers = {
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     try:
-        # Step 1: Short Link (xhslink) ကို မူရင်း Link သို့ ပြောင်းခြင်း
-        session = requests.Session()
-        res_initial = session.get(url, headers=headers, allow_redirects=True, timeout=5)
-        final_url = res_initial.url
-
-        # Step 2: BeautifulSoup ဖြင့် Media Tag များ ဆွဲထုတ်ခြင်း
-        soup = BeautifulSoup(res_initial.text, 'html.parser')
+        response = requests.get(url, headers=headers, allow_redirects=True, timeout=8)
+        soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Video link (og:video)
-        video_meta = soup.find("meta", property="og:video") or soup.find("meta", attrs={"name": "og:video"})
+        # ဗီဒီယိုလင့်ခ် ရှာဖွေခြင်း
+        video_meta = soup.find("meta", property="og:video")
         if video_meta and video_meta.get("content"):
-            video_url = video_meta["content"]
-            if video_url.startswith("//"):
-                video_url = "https:" + video_url
-            return {"type": "video", "url": video_url}
+            return {"type": "video", "url": video_meta["content"]}
             
-        # Image link (og:image)
-        image_meta = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "og:image"})
+        # ပုံလင့်ခ် ရှာဖွေခြင်း
+        image_meta = soup.find("meta", property="og:image")
         if image_meta and image_meta.get("content"):
-            image_url = image_meta["content"]
-            if image_url.startswith("//"):
-                image_url = "https:" + image_url
-            return {"type": "image", "url": image_url}
+            return {"type": "image", "url": image_meta["content"]}
             
     except Exception as e:
-        print(f"BS4 Extract Error: {e}")
+        print(f"Error extracting media: {e}")
     return None
 
 @app.route('/', defaults={'path': ''}, methods=['POST', 'GET'])
