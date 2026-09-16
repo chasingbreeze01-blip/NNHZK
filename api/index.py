@@ -1,7 +1,6 @@
 import os
 import re
 import requests
-from bs4 import BeautifulSoup
 from flask import Flask, request
 
 TOKEN = '8754460428:AAFGxRB1B4-DuL-QXxgd4fWWh0okPiznGhM'
@@ -9,16 +8,13 @@ TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
 
 app = Flask(__name__)
 
-# Keyboard Button ပါဝင်သော send_message function
 def send_message(chat_id, text):
     url = f"{TELEGRAM_API}/sendMessage"
     payload = {
         "chat_id": chat_id, 
         "text": text,
         "reply_markup": {
-            "keyboard": [
-                [{"text": "🚀 Start"}]
-            ],
+            "keyboard": [[{"text": "🚀 Start"}]],
             "resize_keyboard": True,
             "is_persistent": True
         }
@@ -32,7 +28,7 @@ def send_video(chat_id, video_url):
     url = f"{TELEGRAM_API}/sendVideo"
     payload = {"chat_id": chat_id, "video": video_url, "caption": "Here is your video!"}
     try:
-        requests.post(url, json=payload, timeout=12)
+        requests.post(url, json=payload, timeout=8)
     except Exception as e:
         print(f"Error: {e}")
 
@@ -44,27 +40,42 @@ def send_photo(chat_id, photo_url):
     except Exception as e:
         print(f"Error: {e}")
 
+def send_media_group(chat_id, media_urls):
+    url = f"{TELEGRAM_API}/sendMediaGroup"
+    media = [{"type": "photo", "media": u} for u in media_urls[:10]]
+    payload = {"chat_id": chat_id, "media": media}
+    try:
+        requests.post(url, json=payload, timeout=8)
+    except Exception as e:
+        print(f"Error: {e}")
+
 def is_rednote_link(url):
     return "xiaohongshu.com" in url or "xhslink.com" in url
 
 def extract_rednote_media(url):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
     try:
-        response = requests.get(url, headers=headers, allow_redirects=True, timeout=8)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        # Fast API Service for Rednote / Xiaohongshu
+        cobalt_url = "https://api.cobalt.tools/api/json"
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        }
+        payload = {"url": url}
         
-        video_meta = soup.find("meta", property="og:video")
-        if video_meta and video_meta.get("content"):
-            return {"type": "video", "url": video_meta["content"]}
-            
-        image_meta = soup.find("meta", property="og:image")
-        if image_meta and image_meta.get("content"):
-            return {"type": "image", "url": image_meta["content"]}
-            
+        res = requests.post(cobalt_url, json=payload, headers=headers, timeout=5)
+        data = res.json()
+        
+        status = data.get("status")
+        if status in ["stream", "redirect"]:
+            return {"type": "video", "url": data.get("url")}
+        elif status == "picker":
+            picker = data.get("picker", [])
+            urls = [item.get("url") for item in picker if item.get("url")]
+            if urls:
+                return {"type": "images", "urls": urls}
     except Exception as e:
-        print(f"Error extracting media: {e}")
+        print(f"Cobalt error: {e}")
+        
     return None
 
 @app.route('/', defaults={'path': ''}, methods=['POST', 'GET'])
@@ -78,7 +89,6 @@ def webhook(path):
                 chat_id = message["chat"]["id"]
                 text = message.get("text", "")
 
-                # /start သို့မဟုတ် 🚀 Start ခလုတ်ကို နှိပ်လျှင်
                 if text.startswith("/start") or text == "🚀 Start":
                     welcome_text = (
                         "မင်္ဂလာပါ ✌️ NyiNyi + K 's OASIS 🍀🌎 လေးက ကြိုဆိုပါတယ်ဗျာ💕 \n\n"
@@ -96,8 +106,11 @@ def webhook(path):
                     if media:
                         if media["type"] == "video":
                             send_video(chat_id, media["url"])
-                        elif media["type"] == "image":
-                            send_photo(chat_id, media["url"])
+                        elif media["type"] == "images":
+                            if len(media["urls"]) == 1:
+                                send_photo(chat_id, media["urls"][0])
+                            else:
+                                send_media_group(chat_id, media["urls"])
                     else:
                         send_message(chat_id, "Data ကို ရှာမတွေ့ပါဘူးဗျ 🥺 link မှားနေတာဖြစ်နိုင်ပါတယ်။")
                 elif text:
