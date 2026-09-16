@@ -1,6 +1,7 @@
 import os
 import re
 import requests
+from bs4 import BeautifulSoup
 from flask import Flask, request
 
 TOKEN = '8754460428:AAFGxRB1B4-DuL-QXxgd4fWWh0okPiznGhM'
@@ -40,60 +41,41 @@ def send_photo(chat_id, photo_url):
     except Exception as e:
         print(f"Error: {e}")
 
-def send_media_group(chat_id, media_urls):
-    url = f"{TELEGRAM_API}/sendMediaGroup"
-    media = [{"type": "photo", "media": u} for u in media_urls[:10]]
-    payload = {"chat_id": chat_id, "media": media}
-    try:
-        requests.post(url, json=payload, timeout=8)
-    except Exception as e:
-        print(f"Error: {e}")
-
 def is_rednote_link(url):
     return "xiaohongshu.com" in url or "xhslink.com" in url
 
-# Short Link (xhslink.com) များကို Real URL သို့ ပြောင်းပေးသည့် Function
-def get_real_url(url):
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-    try:
-        res = requests.head(url, headers=headers, allow_redirects=True, timeout=5)
-        return res.url
-    except Exception:
-        return url
-
+# BeautifulSoup မူရင်း Downloader Logic (Short Link Fix ပါဝင်သည်)
 def extract_rednote_media(url):
-    real_url = get_real_url(url)
-    
-    # Method 1: TikWM Rednote API
+    headers = {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
+    }
     try:
-        api_url = f"https://api.v2.tikwm.com/api/rednote?url={real_url}"
-        res = requests.get(api_url, timeout=6).json()
-        if res.get("code") == 0 and "data" in res:
-            data = res["data"]
-            if data.get("images"):
-                return {"type": "images", "urls": data["images"]}
-            elif data.get("play"):
-                return {"type": "video", "url": data["play"]}
-    except Exception as e:
-        print(f"API 1 Error: {e}")
+        # Step 1: Short Link (xhslink) ကို မူရင်း Link သို့ ပြောင်းခြင်း
+        session = requests.Session()
+        res_initial = session.get(url, headers=headers, allow_redirects=True, timeout=5)
+        final_url = res_initial.url
 
-    # Method 2: Cobalt API
-    try:
-        cobalt_url = "https://api.cobalt.tools/api/json"
-        headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        payload = {"url": real_url}
-        res = requests.post(cobalt_url, json=payload, headers=headers, timeout=6).json()
+        # Step 2: BeautifulSoup ဖြင့် Media Tag များ ဆွဲထုတ်ခြင်း
+        soup = BeautifulSoup(res_initial.text, 'html.parser')
         
-        status = res.get("status")
-        if status in ["stream", "redirect"]:
-            return {"type": "video", "url": res.get("url")}
-        elif status == "picker":
-            urls = [item.get("url") for item in res.get("picker", []) if item.get("url")]
-            if urls:
-                return {"type": "images", "urls": urls}
+        # Video link (og:video)
+        video_meta = soup.find("meta", property="og:video") or soup.find("meta", attrs={"name": "og:video"})
+        if video_meta and video_meta.get("content"):
+            video_url = video_meta["content"]
+            if video_url.startswith("//"):
+                video_url = "https:" + video_url
+            return {"type": "video", "url": video_url}
+            
+        # Image link (og:image)
+        image_meta = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "og:image"})
+        if image_meta and image_meta.get("content"):
+            image_url = image_meta["content"]
+            if image_url.startswith("//"):
+                image_url = "https:" + image_url
+            return {"type": "image", "url": image_url}
+            
     except Exception as e:
-        print(f"API 2 Error: {e}")
-
+        print(f"BS4 Extract Error: {e}")
     return None
 
 @app.route('/', defaults={'path': ''}, methods=['POST', 'GET'])
@@ -124,11 +106,8 @@ def webhook(path):
                     if media:
                         if media["type"] == "video":
                             send_video(chat_id, media["url"])
-                        elif media["type"] == "images":
-                            if len(media["urls"]) == 1:
-                                send_photo(chat_id, media["urls"][0])
-                            else:
-                                send_media_group(chat_id, media["urls"])
+                        elif media["type"] == "image":
+                            send_photo(chat_id, media["url"])
                     else:
                         send_message(chat_id, "Data ကို ရှာမတွေ့ပါဘူးဗျ 🥺 link မှားနေတာဖြစ်နိုင်ပါတယ်။")
                 elif text:
